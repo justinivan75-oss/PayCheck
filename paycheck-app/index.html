@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paycheck</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Paycheck">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F3F5F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>[hidden]{display:none!important} img{max-width:100%} body{margin:0}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" media="print" onload="this.media='all'">
+<style>
+/* Layout: a punch-card ledger — pay-period summary on top, clock-in form, then shifts grouped by pay period */
+:root {
+  --bg: #F3F5F4;
+  --surface: #FFFFFF;
+  --ink: #15201B;
+  --muted: #5E6B65;
+  --line: #DCE2DF;
+  --money: #17784A;
+  --money-soft: #E2F2E9;
+  --punch: #C2410C;
+  --punch-soft: #FCEBE1;
+  --focus: #2563EB;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1513; --surface: #17201C; --ink: #E7EEEA; --muted: #93A29B; --line: #2A3631;
+    --money: #4ADE94; --money-soft: #15301F; --punch: #FB8F5A; --punch-soft: #3A2116; --focus: #7AA7FF;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1513; --surface: #17201C; --ink: #E7EEEA; --muted: #93A29B; --line: #2A3631;
+  --money: #4ADE94; --money-soft: #15301F; --punch: #FB8F5A; --punch-soft: #3A2116; --focus: #7AA7FF;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(26px, 5vw, 36px); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 19px; font-weight: 600; }
+.num, td.n, .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+header.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
+header.top p { margin: 4px 0 0; color: var(--muted); }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; font-weight: 600; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--money); border-color: var(--money); color: var(--bg); }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; font-weight: 500; }
+button.ghost:hover { color: var(--ink); }
+button.danger { color: var(--punch); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Current period summary */
+.period { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 16px; }
+.period-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+.payday { display: inline-flex; gap: 6px; align-items: center; background: var(--money-soft); color: var(--money); padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.stat { display: grid; gap: 2px; min-width: 0; }
+.stat .num { font-size: clamp(20px, 3.4vw, 28px); font-weight: 600; }
+.stat .sub { font-size: 12px; color: var(--muted); }
+.stat.take .num { color: var(--money); }
+.breakdown { border-top: 1px dashed var(--line); padding-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); }
+.breakdown b { color: var(--ink); font-family: var(--f-mono); font-weight: 600; }
+@media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stat.take { grid-column: 1 / -1; } }
+
+/* Form */
+form.log { display: grid; gap: 14px; }
+.fields { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 12px; }
+.fields .wide { grid-column: 1 / -1; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; font-weight: 600; }
+.tiprow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tiprow .field[hidden] { display: none !important; }
+select, input { font: inherit; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); min-width: 0; }
+input[type="time"], input[type="date"], input[type="number"] { font-family: var(--f-mono); }
+.field.check { display: flex; align-items: center; gap: 8px; }
+.field.check input { width: 18px; height: 18px; flex: none; accent-color: var(--money); }
+.field.check label { font-weight: 500; }
+.tag.nb { background: var(--money-soft); color: var(--money); }
+.preview { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 14px; color: var(--muted); min-height: 24px; }
+.preview b { color: var(--ink); font-family: var(--f-mono); }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--punch-soft); color: var(--punch); }
+.form-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.err { color: var(--punch); font-size: 13px; }
+@media (max-width: 640px) { .fields { grid-template-columns: 1fr 1fr; } .fields .date { grid-column: 1 / -1; } }
+
+section.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 14px; }
+
+/* Ledger */
+.ledger { display: grid; gap: 22px; }
+.pp { display: grid; gap: 8px; }
+.pp-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.pp-head h3 { font-size: 16px; font-weight: 600; }
+.pp-head .tot { font-size: 13px; color: var(--muted); }
+.pp-head .tot b { color: var(--ink); font-family: var(--f-mono); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; padding: 6px 8px; white-space: nowrap; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+th.n, td.n { text-align: right; }
+td.note { white-space: normal; color: var(--muted); font-size: 13px; min-width: 120px; }
+td.actions { text-align: right; }
+.ot { color: var(--punch); font-weight: 600; }
+.empty { text-align: center; padding: 28px 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
+
+/* Settings */
+details.settings summary { cursor: pointer; font-family: var(--f-display); font-weight: 600; font-size: 17px; }
+.set-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+.notes { font-size: 13px; color: var(--muted); margin: 0; max-width: 70ch; }
+@media (max-width: 640px) { .set-grid { grid-template-columns: 1fr 1fr; } }
+.status { font-size: 13px; color: var(--muted); }
+.backup { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); display: grid; gap: 8px; }
+.backup h3 { font-size: 16px; font-weight: 600; }
+.filebtn { font-weight: 600; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; cursor: pointer; }
+body { padding-top: max(24px, env(safe-area-inset-top, 0px)); padding-bottom: max(48px, env(safe-area-inset-bottom, 0px)); }
+input, select { font-size: 16px; } /* stops iPhone zooming in on tap */
+@media (prefers-reduced-motion: no-preference) { button { transition: filter .15s, border-color .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Paycheck Tracker</h1>
+      <p>Clock in, clock out, see what's coming on payday.</p>
+    </div>
+    <span class="status" id="status">Saved on this iPhone</span>
+  </header>
+
+  <section class="period" aria-labelledby="pp-title">
+    <div class="period-head">
+      <div>
+        <div class="label">Current pay period</div>
+        <h2 id="pp-title">—</h2>
+      </div>
+      <span class="payday" id="pp-payday">Payday —</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="label">Hours</span><span class="num" id="s-hours">0.00</span><span class="sub" id="s-shifts">0 shifts</span></div>
+      <div class="stat"><span class="label">Wages</span><span class="num" id="s-wages">$0.00</span><span class="sub" id="s-rate">at $16.00/hr</span></div>
+      <div class="stat"><span class="label">Tips</span><span class="num" id="s-tips">$0.00</span><span class="sub" id="s-tipsplit">$0 cash · $0 card</span></div>
+      <div class="stat"><span class="label">Est. paycheck</span><span class="num" id="s-net">$0.00</span><span class="sub" id="s-gross">$0.00 gross</span></div>
+      <div class="stat take"><span class="label">With cash tips</span><span class="num" id="s-all">$0.00</span><span class="sub">total take-home</span></div>
+    </div>
+    <div class="breakdown" id="s-breakdown"></div>
+  </section>
+
+  <section class="card" aria-labelledby="log-title">
+    <h2 id="log-title">Log a shift</h2>
+    <form class="log" id="form" novalidate>
+      <div class="fields">
+        <div class="field date"><label for="f-date">Date</label><input type="date" id="f-date" required></div>
+        <div class="field"><label for="f-start">Clock in</label><input type="time" id="f-start" required></div>
+        <div class="field"><label for="f-end">Clock out</label><input type="time" id="f-end" required></div>
+        <div class="field"><label for="f-tiptype">Tips were</label><select id="f-tiptype"><option value="cash">Cash</option><option value="card">Credit card</option><option value="both">Both</option></select></div>
+        <div class="field wide tiprow">
+          <div class="field" id="w-cash"><label for="f-cash">Cash tips ($)</label><input type="number" id="f-cash" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+          <div class="field" id="w-card"><label for="f-card">Credit card tips ($)</label><input type="number" id="f-card" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+        </div>
+        <div class="field wide check"><input type="checkbox" id="f-nobreak"><label for="f-nobreak">No unpaid break this shift <span class="hint" style="display:inline">(skip the automatic 30 min on shifts over 5 hours)</span></label></div>
+        <div class="field wide"><label for="f-note">Note (optional)</label><input type="text" id="f-note" maxlength="120" placeholder="e.g. covered for Mike, closing shift"></div>
+      </div>
+      <div class="preview" id="preview">Enter clock in and clock out to see hours and pay.</div>
+      <div class="form-actions">
+        <button type="submit" class="primary" id="f-submit">Save shift</button>
+        <button type="button" id="f-cancel" hidden>Cancel edit</button>
+        <span class="err" id="f-err" role="alert"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="ledger-title">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2 id="ledger-title">Shifts by pay period</h2>
+      <span class="status" id="alltime"></span>
+    </div>
+    <div class="ledger" id="ledger">
+      <div class="empty">Your shifts will show up here, grouped by pay period. Log your first one above.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <details class="settings" id="settings">
+      <summary>Pay settings</summary>
+      <form id="set-form" novalidate>
+        <div class="set-grid">
+          <div class="field"><label for="s-rate-in">Hourly rate ($)</label><input type="number" id="s-rate-in" min="0" step="0.01"></div>
+          <div class="field"><label for="s-tax-in">Withholding (%)</label><input type="number" id="s-tax-in" min="0" max="60" step="0.1"></div>
+          <div class="field"><label for="s-start-in">A period start date</label><input type="date" id="s-start-in"></div>
+          <div class="field"><label for="s-lag-in">Days from period end to payday</label><input type="number" id="s-lag-in" min="0" max="30" step="1"></div>
+        </div>
+        <div class="form-actions" style="margin-top:12px">
+          <button type="submit">Save settings</button>
+          <span class="status" id="set-msg"></span>
+        </div>
+      </form>
+      <div class="backup">
+        <h3>Backup</h3>
+        <p class="notes">Your shifts are saved on this iPhone only. Save a backup now and then (it goes to the Files app) so you never lose them.</p>
+        <div class="form-actions">
+          <button type="button" id="b-export">Save backup</button>
+          <label class="filebtn" for="b-import">Restore from backup</label>
+          <input type="file" id="b-import" hidden>
+          <span class="status" id="b-msg"></span>
+        </div>
+      </div>
+      <div style="display:grid;gap:8px;margin-top:16px">
+        <p class="notes"><b>Breaks:</b> any shift longer than 5 hours automatically has a 30-minute unpaid break taken out. Check "No unpaid break this shift" when you log a shift to skip it.</p>
+        <p class="notes"><b>Overtime:</b> hours over 40 in a single week (each half of a pay period) are paid at 1.5× your rate, per NJ law.</p>
+        <p class="notes"><b>Pay periods:</b> two weeks long. Set any date a period starts on and how many days after it ends you get paid. Set from your Proliant stub: periods run Monday to Sunday and you're paid the Friday after (5 days later).</p>
+        <p class="notes"><b>Take-home estimate:</b> wages and tips minus the withholding %. The 10% default covers Social Security and Medicare (7.65%), NJ income tax, and NJ payroll deductions. With part-time earnings, federal income tax withholding is usually close to zero. Your real stub will differ a bit. Credit card tips come through your paycheck, so the same % is taken out of them. Cash tips go straight in your pocket with nothing withheld. "With cash tips" is your paycheck plus your cash. Cash tips are still taxable income when you file.</p>
+      </div>
+    </details>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const DAY = 86400000;
+  const DEFAULTS = { rate: 16, taxPct: 10, periodStart: "2026-09-28", lagDays: 5 };
+  let settings = { ...DEFAULTS };
+  let shifts = [];       // [{id, date, start, end, tips, note}]
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("pt." + k); return v ? JSON.parse(v) : d; } catch (x) { return d; } },
+    set(k, v) { try { localStorage.setItem("pt." + k, JSON.stringify(v)); return true; } catch (x) { return false; } }
+  };
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const num = (v) => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0; };
+  const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
+  const isTime = (v) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+  // Returns a safe copy of a shift, or null if it can't be used.
+  function cleanShift(s) {
+    if (!s || !isDate(s.date) || !isTime(s.start) || !isTime(s.end)) return null;
+    const out = { id: typeof s.id === "string" && s.id ? s.id : newId(), date: s.date, start: s.start, end: s.end,
+      noBreak: !!s.noBreak, note: typeof s.note === "string" ? s.note.slice(0, 120) : "", updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : "" };
+    if (s.cashTips == null && s.cardTips == null) { out.cashTips = 0; out.cardTips = num(s.tips); }
+    else { out.cashTips = num(s.cashTips); out.cardTips = num(s.cardTips); }
+    out.tips = out.cashTips + out.cardTips;
+    return out;
+  }
+  function cleanSettings(o) {
+    o = o && typeof o === "object" ? o : {};
+    const n = (v, d) => (v === "" || v == null || isNaN(Number(v))) ? d : Number(v);
+    return {
+      rate: Math.max(0, n(o.rate, DEFAULTS.rate)),
+      taxPct: Math.min(60, Math.max(0, n(o.taxPct, DEFAULTS.taxPct))),
+      periodStart: isDate(o.periodStart) ? o.periodStart : DEFAULTS.periodStart,
+      lagDays: Math.min(30, Math.max(0, Math.round(n(o.lagDays, DEFAULTS.lagDays))))
+    };
+  }
+  function saveShifts() { if (!store.set("shifts", shifts)) $("status").textContent = "Couldn't save. Your iPhone storage may be full."; }
+  let editingId = null;
+  let armedDelete = null;
+
+  const $ = (id) => document.getElementById(id);
+  const money = (n) => "$" + (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const hrs = (n) => n.toFixed(2);
+
+  // ---- date helpers (UTC day numbers avoid DST issues) ----
+  const dayNum = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Math.floor(Date.UTC(y, m - 1, d) / DAY); };
+  const isoFromDay = (n) => new Date(n * DAY).toISOString().slice(0, 10);
+  const fmtDay = (n, opts) => new Date(n * DAY).toLocaleDateString("en-US", { timeZone: "UTC", ...opts });
+  const short = (n) => fmtDay(n, { month: "short", day: "numeric" });
+  const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const fmtTime = (t) => { let [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "pm" : "am"; h = h % 12 || 12; return h + ":" + String(m).padStart(2, "0") + ap; };
+
+  // ---- shift math ----
+  function shiftHours(start, end, noBreak) {
+    let mins = toMin(end) - toMin(start);
+    if (mins <= 0) mins += 1440;            // overnight shift
+    const breakMin = !noBreak && mins > 300 ? 30 : 0;   // >5h → 30 min unpaid unless turned off
+    return { worked: mins / 60, breakH: breakMin / 60, paid: (mins - breakMin) / 60 };
+  }
+  function periodOf(dn) {
+    const anchor = dayNum(settings.periodStart);
+    const idx = Math.floor((dn - anchor) / 14);
+    const start = anchor + idx * 14;
+    return { idx, start, end: start + 13, payday: start + 13 + Number(settings.lagDays || 0) };
+  }
+  // Older shifts saved one "tips" number; treat those as credit card tips.
+  function tipsOf(s) {
+    if (s.cashTips == null && s.cardTips == null) return { cash: 0, card: Number(s.tips) || 0 };
+    return { cash: Number(s.cashTips) || 0, card: Number(s.cardTips) || 0 };
+  }
+  function summarize(list) {
+    const weeks = [0, 0];
+    let cash = 0, card = 0, breaks = 0;
+    let p = null;
+    for (const s of list) {
+      const dn = dayNum(s.date);
+      p = p || periodOf(dn);
+      const h = shiftHours(s.start, s.end, s.noBreak);
+      weeks[dn - p.start < 7 ? 0 : 1] += h.paid;
+      const t = tipsOf(s); cash += t.cash; card += t.card;
+      breaks += h.breakH;
+    }
+    const reg = weeks.reduce((a, w) => a + Math.min(40, w), 0);
+    const ot = weeks.reduce((a, w) => a + Math.max(0, w - 40), 0);
+    const rate = Number(settings.rate) || 0;
+    const wages = reg * rate + ot * rate * 1.5;
+    const gross = wages + card + cash;          // all money earned, every tip included
+    const taxable = wages + card;               // what runs through the paycheck
+    const tax = taxable * (Number(settings.taxPct) || 0) / 100;
+    const net = taxable - tax;                  // the paycheck
+    return { hours: reg + ot, reg, ot, wages, cash, card, tips: cash + card, gross, tax, net, withCash: net + cash, breaks, count: list.length };
+  }
+
+  // ---- rendering ----
+  function render() {
+    const tp = periodOf(dayNum(todayIso()));
+    const cur = shifts.filter((s) => periodOf(dayNum(s.date)).idx === tp.idx);
+    const sm = summarize(cur);
+    $("pp-title").textContent = fmtDay(tp.start, { weekday: "short", month: "short", day: "numeric" }) + " – " + fmtDay(tp.end, { weekday: "short", month: "short", day: "numeric" });
+    const daysLeft = tp.payday - dayNum(todayIso());
+    $("pp-payday").textContent = "Payday " + fmtDay(tp.payday, { weekday: "short", month: "short", day: "numeric" }) + (daysLeft === 0 ? " · today" : daysLeft > 0 ? " · in " + daysLeft + " day" + (daysLeft === 1 ? "" : "s") : "");
+    $("s-hours").textContent = hrs(sm.hours);
+    $("s-shifts").textContent = sm.count + " shift" + (sm.count === 1 ? "" : "s") + (sm.ot ? " · " + hrs(sm.ot) + " OT" : "");
+    $("s-wages").textContent = money(sm.wages);
+    $("s-rate").textContent = "at " + money(Number(settings.rate) || 0) + "/hr";
+    $("s-tips").textContent = money(sm.tips);
+    $("s-tipsplit").textContent = money(sm.cash) + " cash · " + money(sm.card) + " card";
+    $("s-net").textContent = money(sm.net);
+    $("s-gross").textContent = money(sm.gross) + " gross";
+    $("s-all").textContent = money(sm.withCash);
+    $("s-breakdown").innerHTML =
+      "<span>Regular <b>" + hrs(sm.reg) + " h</b></span>" +
+      "<span>Overtime <b>" + hrs(sm.ot) + " h</b></span>" +
+      "<span>Unpaid breaks <b>" + hrs(sm.breaks) + " h</b></span>" +
+      "<span>Est. withholding <b>" + money(sm.tax) + "</b> (" + Number(settings.taxPct) + "%, on wages + card tips)</span>" +
+      "<span>Cash tips, nothing withheld <b>" + money(sm.cash) + "</b></span>";
+
+    // ledger grouped by period
+    const groups = new Map();
+    for (const s of shifts) {
+      const p = periodOf(dayNum(s.date));
+      if (!groups.has(p.idx)) groups.set(p.idx, { p, list: [] });
+      groups.get(p.idx).list.push(s);
+    }
+    const ledger = $("ledger");
+    ledger.textContent = "";
+    if (!shifts.length) {
+      ledger.innerHTML = '<div class="empty">Your shifts will show up here, grouped by pay period. Log your first one above.</div>';
+      $("alltime").textContent = "";
+      return;
+    }
+    const all = { hours: 0, gross: 0 };
+    [...groups.values()].sort((a, b) => b.p.idx - a.p.idx).forEach(({ p, list }) => {
+      list.sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start));
+      const g = summarize(list);
+      all.hours += g.hours; all.gross += g.gross;
+      const wrap = document.createElement("div");
+      wrap.className = "pp";
+      const head = document.createElement("div");
+      head.className = "pp-head";
+      const h3 = document.createElement("h3");
+      h3.textContent = short(p.start) + " – " + short(p.end) + (p.idx === tp.idx ? " (current)" : "");
+      const tot = document.createElement("span");
+      tot.className = "tot";
+      tot.innerHTML = "<b>" + hrs(g.hours) + " h</b> · <b>" + money(g.gross) + "</b> gross · <b>" + money(g.net) + "</b> paycheck · <b>" + money(g.withCash) + "</b> with cash tips";
+      const left = document.createElement("div");
+      left.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center";
+      const pd = document.createElement("span");
+      pd.className = "payday";
+      pd.textContent = (p.payday < dayNum(todayIso()) ? "Paid " : "Payday ") + fmtDay(p.payday, { weekday: "short", month: "short", day: "numeric" });
+      left.append(h3, pd);
+      head.append(left, tot);
+      const sc = document.createElement("div");
+      sc.className = "scroll";
+      const t = document.createElement("table");
+      t.innerHTML = "<thead><tr><th>Day</th><th>In</th><th>Out</th><th class='n'>Paid hrs</th><th class='n'>Wages</th><th class='n'>Tips</th><th>Note</th><th></th></tr></thead>";
+      const tb = document.createElement("tbody");
+      const rate = Number(settings.rate) || 0;
+      for (const s of list) {
+        const h = shiftHours(s.start, s.end, s.noBreak);
+        const tr = document.createElement("tr");
+        const cells = [
+          fmtDay(dayNum(s.date), { weekday: "short", month: "short", day: "numeric" }),
+          fmtTime(s.start), fmtTime(s.end)
+        ];
+        cells.forEach((c) => { const td = document.createElement("td"); td.textContent = c; tr.append(td); });
+        const tdH = document.createElement("td"); tdH.className = "n";
+        tdH.textContent = hrs(h.paid);
+        if (h.breakH) { const tg = document.createElement("span"); tg.className = "tag"; tg.style.marginLeft = "6px"; tg.textContent = "−30m"; tg.title = "30-minute unpaid break"; tdH.append(tg); }
+        else if (s.noBreak && h.worked > 5) { const tg = document.createElement("span"); tg.className = "tag nb"; tg.style.marginLeft = "6px"; tg.textContent = "no break"; tg.title = "Unpaid break turned off for this shift"; tdH.append(tg); }
+        const tdW = document.createElement("td"); tdW.className = "n"; tdW.textContent = money(h.paid * rate);
+        const tt = tipsOf(s);
+        const tdT = document.createElement("td"); tdT.className = "n";
+        tdT.textContent = [tt.cash ? money(tt.cash) + " cash" : "", tt.card ? money(tt.card) + " card" : ""].filter(Boolean).join(" + ") || "—";
+        const tdN = document.createElement("td"); tdN.className = "note"; tdN.textContent = s.note || "";
+        const tdA = document.createElement("td"); tdA.className = "actions";
+        const eb = document.createElement("button"); eb.className = "ghost"; eb.type = "button"; eb.textContent = "Edit"; eb.onclick = () => startEdit(s);
+        const db_ = document.createElement("button"); db_.className = "ghost danger"; db_.type = "button";
+        db_.textContent = armedDelete === s.id ? "Confirm delete" : "Delete";
+        db_.onclick = () => onDelete(s.id);
+        tdA.append(eb, db_);
+        tr.append(tdH, tdW, tdT, tdN, tdA);
+        tb.append(tr);
+      }
+      t.append(tb);
+      if (g.ot) {
+        const tf = document.createElement("tfoot");
+        tf.innerHTML = "<tr><td colspan='8' class='ot'>Includes " + hrs(g.ot) + " overtime hours at 1.5× (" + money(rate * 1.5) + "/hr). Wages column shows straight time.</td></tr>";
+        t.append(tf);
+      }
+      sc.append(t);
+      wrap.append(head, sc);
+      ledger.append(wrap);
+    });
+    $("alltime").textContent = "All time: " + hrs(all.hours) + " h · " + money(all.gross) + " gross";
+  }
+
+  function updatePreview() {
+    const st = $("f-start").value, en = $("f-end").value;
+    const pv = $("preview");
+    if (!st || !en) { pv.textContent = "Enter clock in and clock out to see hours and pay."; return; }
+    const nb = $("f-nobreak").checked;
+    const h = shiftHours(st, en, nb);
+    const { cash, card } = formTips();
+    const rate = Number(settings.rate) || 0;
+    const keep = 1 - (Number(settings.taxPct) || 0) / 100;
+    const check = (h.paid * rate + card) * keep;
+    pv.innerHTML = "";
+    const parts = [
+      ["On the clock", hrs(h.worked) + " h"],
+      ["Paid", hrs(h.paid) + " h"],
+      ["Wages", money(h.paid * rate)],
+      ["Est. paycheck", money(check)],
+    ];
+    if (cash) parts.push(["With cash tips", money(check + cash)]);
+    parts.forEach(([k, v]) => { const sp = document.createElement("span"); sp.append(k + " "); const b = document.createElement("b"); b.textContent = v; sp.append(b); pv.append(sp); });
+    if (h.breakH) { const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = "30 min unpaid break taken out"; pv.append(tg); }
+    else if (nb && h.worked > 5) { const tg = document.createElement("span"); tg.className = "tag nb"; tg.textContent = "No unpaid break"; pv.append(tg); }
+    if (toMin(en) <= toMin(st)) { const n = document.createElement("span"); n.textContent = "(ends the next day)"; pv.append(n); }
+    if (h.worked > 14) { const w = document.createElement("span"); w.className = "tag"; w.textContent = "Over 14 hours. Check AM/PM?"; pv.append(w); }
+  }
+
+  // ---- tips in the form ----
+  const cents = (v) => Math.max(0, Math.round((Number(v) || 0) * 100) / 100);
+  function formTips() {
+    const tp = $("f-tiptype").value;
+    return { cash: tp === "card" ? 0 : cents($("f-cash").value), card: tp === "cash" ? 0 : cents($("f-card").value) };
+  }
+  function syncTipFields() {
+    const tp = $("f-tiptype").value;
+    $("w-cash").hidden = tp === "card";
+    $("w-card").hidden = tp === "cash";
+  }
+  function lastTipType() { try { return localStorage.getItem("tipType") || "cash"; } catch (x) { return "cash"; } }
+
+  // ---- actions ----
+  function resetForm() {
+    editingId = null;
+    $("form").reset();
+    $("f-tiptype").value = lastTipType();
+    syncTipFields();
+    $("f-date").value = todayIso();
+    $("f-submit").textContent = "Save shift";
+    $("f-cancel").hidden = true;
+    $("f-err").textContent = "";
+    updatePreview();
+  }
+  function startEdit(s) {
+    editingId = s.id;
+    $("f-date").value = s.date; $("f-start").value = s.start; $("f-end").value = s.end;
+    const t = tipsOf(s);
+    $("f-tiptype").value = t.cash && t.card ? "both" : t.cash ? "cash" : t.card ? "card" : lastTipType();
+    $("f-cash").value = t.cash || ""; $("f-card").value = t.card || "";
+    syncTipFields();
+    $("f-note").value = s.note || "";
+    $("f-nobreak").checked = !!s.noBreak;
+    $("f-submit").textContent = "Update shift";
+    $("f-cancel").hidden = false;
+    updatePreview();
+    $("form").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  async function onSubmit(e) {
+    e.preventDefault();
+    const err = $("f-err"); err.textContent = "";
+    const date = $("f-date").value, start = $("f-start").value, end = $("f-end").value;
+    if (!date || !start || !end) { err.textContent = "Add the date, clock-in and clock-out times."; return; }
+    if (start === end) { err.textContent = "Clock in and clock out can't be the same time."; return; }
+    const { cash, card } = formTips();
+    try { localStorage.setItem("tipType", $("f-tiptype").value); } catch (x) {}
+    const body = { date, start, end, cashTips: cash, cardTips: card, tips: cash + card, noBreak: $("f-nobreak").checked, note: $("f-note").value.trim(), updatedAt: new Date().toISOString() };
+    if (editingId) shifts = shifts.map((s) => s.id === editingId ? { id: editingId, ...body } : s);
+    else shifts.push({ id: newId(), ...body });
+    saveShifts(); render(); resetForm();
+  }
+  async function onDelete(id) {
+    if (armedDelete !== id) { armedDelete = id; render(); clearTimeout(onDelete.t); onDelete.t = setTimeout(() => { if (armedDelete === id) { armedDelete = null; render(); } }, 4000); return; }
+    armedDelete = null;
+    shifts = shifts.filter((s) => s.id !== id); saveShifts(); render();
+    if (editingId === id) resetForm();
+  }
+  function fillSettings() {
+    $("s-rate-in").value = settings.rate; $("s-tax-in").value = settings.taxPct;
+    $("s-start-in").value = settings.periodStart; $("s-lag-in").value = settings.lagDays;
+  }
+  async function onSaveSettings(e) {
+    e.preventDefault();
+    $("set-msg").textContent = "";
+    const val = (id, def) => { const v = $(id).value.trim(); return v === "" || isNaN(Number(v)) ? def : Number(v); };
+    const next = {
+      rate: Math.max(0, val("s-rate-in", DEFAULTS.rate)),
+      taxPct: Math.min(60, Math.max(0, val("s-tax-in", DEFAULTS.taxPct))),
+      periodStart: $("s-start-in").value || DEFAULTS.periodStart,
+      lagDays: Math.min(30, Math.max(0, Math.round(val("s-lag-in", DEFAULTS.lagDays))))
+    };
+    if (new Date(dayNum(next.periodStart + "") * DAY + (13 + next.lagDays) * DAY).getUTCDay() !== 5) {
+      $("set-msg").textContent = "Heads up: with these settings payday isn't a Friday.";
+    }
+    settings = next; render(); updatePreview();
+    if (store.set("settings", next)) { if (!$("set-msg").textContent.startsWith("Heads up")) $("set-msg").textContent = "Saved."; }
+    else $("set-msg").textContent = "Couldn't save settings.";
+  }
+
+  // ---- wire up ----
+  $("form").addEventListener("submit", onSubmit);
+  $("f-cancel").addEventListener("click", resetForm);
+  ["f-start", "f-end", "f-cash", "f-card"].forEach((id) => $(id).addEventListener("input", updatePreview));
+  $("f-tiptype").addEventListener("change", () => { syncTipFields(); updatePreview(); });
+  $("f-nobreak").addEventListener("change", updatePreview);
+  $("set-form").addEventListener("submit", onSaveSettings);
+  resetForm();
+
+  // ---- backup ----
+  $("b-export").addEventListener("click", () => {
+    const data = JSON.stringify({ app: "paycheck-tracker", version: 1, exportedAt: new Date().toISOString(), settings, shifts }, null, 2);
+    const file = new File([data], "paycheck-backup-" + todayIso() + ".json", { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: "Paycheck backup" }).then(() => { $("b-msg").textContent = "Backup saved."; }).catch(() => {});
+    } else {
+      $("b-msg").textContent = "Saving backups needs iOS 15 or newer. Update your iPhone and try again.";
+    }
+  });
+  $("b-import").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (!d || !Array.isArray(d.shifts)) throw new Error("bad");
+      const merged = new Map(shifts.map((x) => [x.id, x]));
+      let added = 0, updated = 0;
+      for (const raw of d.shifts) {
+        const c = cleanShift(raw); if (!c) continue;
+        const mine = merged.get(c.id);
+        if (!mine) { merged.set(c.id, c); added++; }
+        else if ((c.updatedAt || "") > (mine.updatedAt || "")) { merged.set(c.id, c); updated++; }
+      }
+      if (d.shifts.length && !d.shifts.some((r) => cleanShift(r))) throw new Error("bad");
+      const nextShifts = [...merged.values()];
+      const nextSettings = d.settings ? cleanSettings(d.settings) : settings;
+      const prev = [shifts, settings];
+      shifts = nextShifts; settings = nextSettings;
+      try { render(); } catch (x) { [shifts, settings] = prev; render(); throw x; }
+      saveShifts(); if (d.settings) store.set("settings", settings);
+      fillSettings(); updatePreview();
+      $("b-msg").textContent = "Restored. " + added + " new, " + updated + " updated.";
+    } catch (x) { $("b-msg").textContent = "That file isn't a Paycheck Tracker backup."; }
+    e.target.value = "";
+  });
+
+  settings = cleanSettings(store.get("settings", {}));
+  const saved = store.get("shifts", []);
+  shifts = (Array.isArray(saved) ? saved : []).map(cleanShift).filter(Boolean);
+  // 9: Safari and the home-screen app keep separate data
+  if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone && !matchMedia("(display-mode: standalone)").matches) {
+    $("status").textContent = "Tip: open Paycheck from your home screen. Shifts saved here in Safari stay in Safari.";
+  }
+  fillSettings(); render(); updatePreview();
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (x) {}
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>
